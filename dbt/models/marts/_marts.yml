@@ -70,6 +70,13 @@ models:
           arguments:
             combination_of_columns: [temperature_band_c, day_type, time_of_day]
 
+  # Looker Studio 用のビュー。列名を日本語にして、画面側の計算フィールドを不要にしている
+  # （集計ロジックはすべて上流の mart / fct にあり、テストもそちらで行う）
+  - name: rpt_daily_accuracy
+    description: エリア×日の予測精度（mart_forecast_accuracy_daily の日本語列名版）。ダッシュボード1ページ目
+  - name: rpt_kyushu_30min
+    description: 九州エリアの30分ごとの予測・実績・気温（fct の九州分の日本語列名版）。ダッシュボード2・3ページ目
+
 exposures:
   - name: kyushu_power_dashboard
     type: dashboard
@@ -78,7 +85,5 @@ exposures:
     owner:
       name: shimodata
     depends_on:
-      - ref('mart_forecast_accuracy_daily')
-      - ref('mart_weekly_peak_accuracy')
-      - ref('mart_temperature_sensitivity')
-      - ref('fct_area_demand_30min')
+      - ref('rpt_daily_accuracy')
+      - ref('rpt_kyushu_30min')
