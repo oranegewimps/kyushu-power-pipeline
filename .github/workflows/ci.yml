@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  GCP_PROJECT: kyushu-power-pipeline
+  WIF_PROVIDER: projects/547687035435/locations/global/workloadIdentityPools/github/providers/github-oidc
+  DBT_SA: sa-dbt@kyushu-power-pipeline.iam.gserviceaccount.com
+
+jobs:
+  python:
+    name: Python（lint・テスト）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  terraform:
+    name: Terraform（書式・構文チェック）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  dbt:
+    name: dbt build（CI 用データセットで全モデル・全テスト）
+    needs: python
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # Workload Identity 連携（鍵ファイルなし）で GCP に認証するため
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DBT_SA }}
+      - name: dbt deps
+        run: dbt deps --project-dir dbt --profiles-dir dbt
+      - name: dbt build
+        run: dbt build --project-dir dbt --profiles-dir dbt --target ci --full-refresh

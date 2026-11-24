@@ -1,0 +1,84 @@
+version: 2
+
+models:
+  - name: fct_area_demand_30min
+    description: >
+      30分ごと・エリアごとの予実ファクト。2日前時点の予測（forecast_mw）と当日の最終公表値（final_mw）の差、
+      予備率、曜日区分、九州エリアは人口加重の気象を1行にまとめたもの。
+      増分更新（直近 lookback_days 日のパーティションを置き換え）。
+      出典: 電力広域的運営推進機関「広域予備率Web公表システム」を加工して作成
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area, slot_start_jst]
+    columns:
+      - name: day_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['平日', '土日', '祝日', '長期休暇']
+      - name: abs_pct_error
+        description: 絶対誤差率 |最終値-予測| / 最終値
+        data_tests:
+          # 30分で予測が20%以上外れるのは異常の可能性が高い → 警告として出す
+          - dbt_utils.accepted_range:
+              arguments:
+                max_value: 0.2
+              config:
+                severity: warn
+      - name: forecast_lead_hours
+        description: 予測の公表から対象コマまでの時間
+      - name: temperature_c
+        description: 九州8都市の人口加重平均気温（九州エリアのみ）
+        data_tests:
+          - not_null:
+              config:
+                where: "area = '九州'"
+                severity: warn
+
+  - name: mart_forecast_accuracy_daily
+    description: 予測・最終値が48コマそろったエリア×日ごとの予測精度（MAPE・バイアス・ピーク誤差・最小予備率）
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area, target_date]
+    columns:
+      - name: mape
+        description: 平均絶対誤差率（Mean Absolute Percentage Error）
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, max_value: 0.3 }
+      - name: accuracy_grade
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['A: 2%未満', 'B: 2〜4%', 'C: 4%以上']
+
+  - name: mart_weekly_peak_accuracy
+    description: 週間予測（数日前）と翌々日予測の最大需要が、当日のピークとどれだけずれたか
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area, target_date]
+
+  - name: mart_temperature_sensitivity
+    description: 九州エリア。気温帯（2℃刻み）× 曜日区分 × 時間帯ごとの平均需要と予測誤差
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [temperature_band_c, day_type, time_of_day]
+
+exposures:
+  - name: kyushu_power_dashboard
+    type: dashboard
+    maturity: medium
+    description: 九州の電力 予実ダッシュボード（Looker Studio）
+    owner:
+      name: shimodata
+    depends_on:
+      - ref('mart_forecast_accuracy_daily')
+      - ref('mart_weekly_peak_accuracy')
+      - ref('mart_temperature_sensitivity')
+      - ref('fct_area_demand_30min')

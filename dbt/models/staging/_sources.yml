@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Python の取り込みジョブが書き込む生データ（日付パーティション）
+    schema: raw
+    config:
+      loaded_at_field: ingested_at
+      freshness:
+        # 毎朝取り込むので、30時間更新がなければ警告、54時間でエラー
+        warn_after: { count: 30, period: hour }
+        error_after: { count: 54, period: hour }
+    tables:
+      - name: raw_occto_demand_30min
+        description: >
+          OCCTO 広域予備率Web公表システムの30分値。kind=two_day_ahead は2日前時点の予測、
+          kind=same_day は当日夜の最終公表値。出典: 電力広域的運営推進機関（加工して利用）
+      - name: raw_occto_weekly
+        description: "OCCTO 週間（最大需要・最小予備率の時点）。出典: 電力広域的運営推進機関（加工して利用）"
+      - name: raw_weather_hourly
+        description: Open-Meteo の九州8都市の1時間値

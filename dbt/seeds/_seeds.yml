@@ -1,0 +1,24 @@
+version: 2
+
+seeds:
+  - name: seed_jp_holidays
+    description: 内閣府「国民の祝日について」の祝日CSV（2024年以降）を UTF-8 に変換したもの
+    columns:
+      - name: holiday_date
+        data_tests: [unique, not_null]
+      - name: holiday_name
+        data_tests: [not_null]
+
+  - name: seed_city_weights
+    description: >
+      九州の平均気温を出すときの重み。各県の人口の概数（千人）。
+      福岡県は福岡市側と北九州市側に分けて割り当てている。厳密な統計値ではなく重み付けの目安。
+    columns:
+      - name: city_id
+        data_tests: [unique, not_null]
+      - name: population_thousand
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 1

@@ -1,0 +1,56 @@
+name: Deploy
+
+# main に取り込み・dbt・コンテナ関連の変更が入ったら、イメージをビルドして Cloud Run ジョブを更新する
+on:
+  push:
+    branches: [main]
+    paths:
+      - ingestion/**
+      - dbt/**
+      - Dockerfile
+      - requirements.txt
+      - cloudbuild.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  GCP_PROJECT: kyushu-power-pipeline
+  REGION: asia-northeast1
+  WIF_PROVIDER: projects/547687035435/locations/global/workloadIdentityPools/github/providers/github-oidc
+  DEPLOYER_SA: sa-github-deployer@kyushu-power-pipeline.iam.gserviceaccount.com
+  BUILDER_SA: projects/kyushu-power-pipeline/serviceAccounts/sa-cloudbuild@kyushu-power-pipeline.iam.gserviceaccount.com
+  IMAGE: asia-northeast1-docker.pkg.dev/kyushu-power-pipeline/pipeline/pipeline
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: イメージをビルド（Cloud Build）
+        run: |
+          gcloud builds submit . \
+            --project "$GCP_PROJECT" --region "$REGION" \
+            --config cloudbuild.yaml \
+            --substitutions "_TAG=${GITHUB_SHA::7}" \
+            --service-account "$BUILDER_SA" \
+            --gcs-source-staging-dir "gs://${GCP_PROJECT}-build-source/source"
+
+      - name: Cloud Run ジョブを新しいイメージに更新
+        run: |
+          for job in ingestion dbt-build reconcile; do
+            gcloud run jobs update "$job" \
+              --project "$GCP_PROJECT" --region "$REGION" \
+              --image "${IMAGE}:${GITHUB_SHA::7}" --quiet
+          done

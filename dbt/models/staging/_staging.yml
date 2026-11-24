@@ -1,0 +1,87 @@
+version: 2
+
+models:
+  - name: stg_occto__demand_30min
+    description: OCCTO 30分値（日本時間）。kind ごとに「いつ時点の値か」を published_at_jst と lead_hours で持つ
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [kind, area, slot_start_jst]
+    columns:
+      - name: kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['two_day_ahead', 'same_day']
+      - name: area
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['北海道', '東北', '東京', '中部', '北陸', '関西', '中国', '四国', '九州', '沖縄']
+      - name: hour_of_day
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 0, max_value: 23 }
+      - name: area_demand_mw
+        description: エリア需要。沖縄（数百MW）から東京（数万MW）まで
+        data_tests:
+          - not_null
+          # 範囲外なら単位や列のずれを疑う
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 100, max_value: 70000 }
+      - name: area_reserve_rate_pct
+        description: >
+          エリア単体の予備率（予備力÷需要）。エリア間で電気を融通しているため極端な値になることがあり
+          （例: 四国 130%、北海道 -11%）、公式の指標は広域予備率（block_reserve_rate_pct）
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: -50, max_value: 200 }
+              config:
+                severity: warn
+
+  - name: stg_occto__weekly
+    description: OCCTO 週間の最大需要・最小予備率の予測
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [area, target_date, category]
+    columns:
+      - name: category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['最大需要', '最小予備率']
+      - name: lead_days
+        description: >
+          公表日から対象日まで何日前か。公表開始日（2025-04-01）だけは当日公表の0日になっている。
+          また 2025-05-10〜12 は対象日を過ぎた 05-13 に公表された版しか残っておらず、マイナスになる。
+          1日未満のものは予測とみなさず、mart で除外する
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { max_value: 14 }
+          # 対象日以降に公表された「予測」は実データに存在する（上記）。件数を把握するため警告として出す
+          - dbt_utils.accepted_range:
+              arguments: { min_value: 1 }
+              config:
+                severity: warn
+
+  - name: stg_weather__hourly
+    description: 九州8都市の1時間ごとの気象データ
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [city_id, hour_start_jst]
+    columns:
+      - name: city_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('seed_city_weights')
+                field: city_id
+      - name: temperature_c
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: { min_value: -15, max_value: 45 }

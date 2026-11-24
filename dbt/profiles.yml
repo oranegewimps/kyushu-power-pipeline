@@ -1,0 +1,29 @@
+# 鍵ファイルは使わない。ローカルは gcloud のログイン、Cloud Run と GitHub Actions はサービスアカウントで認証する
+kyushu_power:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: "dev_{{ env_var('DBT_USER', 'local') }}"
+      location: asia-northeast1
+      threads: 4
+      priority: interactive
+      maximum_bytes_billed: 1000000000 # 1GB を超えるクエリは止める（課金の暴発防止）
+    ci:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: ci
+      location: asia-northeast1
+      threads: 4
+      maximum_bytes_billed: 1000000000
+    prod:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT') }}"
+      dataset: marts
+      location: asia-northeast1
+      threads: 4
+      maximum_bytes_billed: 5000000000

@@ -1,0 +1,44 @@
+name: kyushu_power
+version: "1.0.0"
+profile: kyushu_power
+config-version: 2
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: target
+clean-targets: [target, dbt_packages]
+
+vars:
+  # 速報値は後から修正されるため、増分更新では直近この日数を毎回作り直す
+  lookback_days: 7
+
+models:
+  kyushu_power:
+    staging:
+      +schema: staging
+      +materialized: view
+    intermediate:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+
+seeds:
+  kyushu_power:
+    +schema: staging
+    seed_jp_holidays:
+      +column_types:
+        holiday_date: date
+        holiday_name: string
+    seed_city_weights:
+      +column_types:
+        city_id: string
+        prefecture: string
+        population_thousand: int64
+
+data_tests:
+  kyushu_power:
+    +severity: error
