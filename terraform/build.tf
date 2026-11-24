@@ -44,8 +44,9 @@ resource "google_storage_bucket_iam_member" "builder_source" {
 }
 
 # GitHub Actions のデプロイ用SAが、ビルドを起動してビルド用SAとして実行できるように
+# logging.viewer は、ビルドのログ（Cloud Logging のみに出力）を GitHub Actions 上に流すため
 resource "google_project_iam_member" "deployer_build" {
-  for_each = toset(["roles/cloudbuild.builds.editor", "roles/serviceusage.serviceUsageConsumer"])
+  for_each = toset(["roles/cloudbuild.builds.editor", "roles/serviceusage.serviceUsageConsumer", "roles/logging.viewer"])
   project  = var.project_id
   role     = each.value
   member   = google_service_account.deployer.member
@@ -54,6 +55,14 @@ resource "google_project_iam_member" "deployer_build" {
 resource "google_storage_bucket_iam_member" "deployer_source" {
   bucket = google_storage_bucket.build_source.name
   role   = "roles/storage.objectAdmin"
+  member = google_service_account.deployer.member
+}
+
+# gcloud builds submit はアップロード前にバケットの存在を確認する（storage.buckets.get）。
+# objectAdmin には含まれないため、このバケットに限って付与する
+resource "google_storage_bucket_iam_member" "deployer_source_bucket" {
+  bucket = google_storage_bucket.build_source.name
+  role   = "roles/storage.legacyBucketReader"
   member = google_service_account.deployer.member
 }
 
